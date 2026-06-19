@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xuri/excelize/v2"
 	"go.yaml.in/yaml/v3"
@@ -81,23 +82,50 @@ type Employee struct {
 	DecorrenzaLivello  time.Time `db:"decorrenza_livello" json:"decorrenza_livello,omitempty" yaml:"decorrenza_livello,omitempty"`
 }
 
-const schema = `
-CREATE TABLE IF NOT EXISTS employee (
+const (
+	schema = `
+CREATE TABLE IF NOT EXISTS employees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT
-);`
+	year TEXT,
+	cid TEXT,
+	codice_individuale TEXT,
+	nome TEXT,
+	cognome TEXT,
+	dipartimento TEXT,
+	servizio TEXT,
+	divisione TEXT,
+	settore TEXT,
+	segmento TEXT,
+	decorrenza_segmento DATE,
+	livello INTEGER,
+	decorrenza_livello DATE
+);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_cid_year ON employees(cid, year);
+`
+)
 
 func (cmd *Load) Execute(args []string) error {
 
 	slog.Debug("opening CVS file", "file", cmd.File, "sheets", cmd.Sheets, "mappings", cmd.Columns, "filters", cmd.Filters)
 
-	// 1. Open the Excel file
+	// open the Excel file
 	f, err := excelize.OpenFile(cmd.File)
 	if err != nil {
 		slog.Error("failed to open file", "path", cmd.File, "error", err)
 		return err
 	}
 	defer f.Close()
+
+	// connect using sqlx (wraps standard database/sql)
+	db, err := sqlx.Connect("sqlite3", "excel.db")
+	if err != nil {
+		slog.Error("failed to connect to database", "error", err)
+		return err
+	}
+	defer db.Close()
+
+	// execute raw schema
+	db.MustExec(schema)
 
 	for _, sheet := range cmd.Sheets {
 
@@ -287,6 +315,11 @@ func (cmd *Load) Execute(args []string) error {
 				}
 			}
 
+			_, err = db.NamedExec(`INSERT INTO employees (year, cid, codice_individuale, nome, cognome, dipartimento, servizio, divisione, settore, segmento, decorrenza_segmento, livello, decorrenza_livello) VALUES (:year, :cid, :codice_individuale, :nome, :cognome, :dipartimento, :servizio, :divisione, :settore, :segmento, :decorrenza_segmento, :livello, :decorrenza_livello)`, &employee)
+			if err != nil {
+				slog.Error("failed to insert employee", "employee", employee, "error", err)
+				return err
+			}
 		}
 	}
 

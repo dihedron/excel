@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/jessevdk/go-flags v1.6.1
+	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.46
 	github.com/xuri/excelize/v2 v2.10.1
