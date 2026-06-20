@@ -3,6 +3,7 @@ package model
 import "time"
 
 type Fatto struct {
+	ID                 int64     `db:"id" json:"-" yaml:"-"`
 	Anno               string    `db:"anno" json:"anno,omitempty" yaml:"anno,omitempty"`
 	CID                string    `db:"cid" json:"cid,omitempty" yaml:"cid,omitempty"`
 	CodiceIndividuale  string    `db:"codice_individuale" json:"codice_individuale,omitempty" yaml:"codice_individuale,omitempty"`
