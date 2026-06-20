@@ -1,0 +1,41 @@
+package model
+
+import "time"
+
+type Fatto struct {
+	Anno               string    `db:"anno" json:"anno,omitempty" yaml:"anno,omitempty"`
+	CID                string    `db:"cid" json:"cid,omitempty" yaml:"cid,omitempty"`
+	CodiceIndividuale  string    `db:"codice_individuale" json:"codice_individuale,omitempty" yaml:"codice_individuale,omitempty"`
+	Nome               string    `db:"nome" json:"nome,omitempty" yaml:"nome,omitempty"`
+	Cognome            string    `db:"cognome" json:"cognome,omitempty" yaml:"cognome,omitempty"`
+	Dipartimento       string    `db:"dipartimento" json:"dipartimento,omitempty" yaml:"dipartimento,omitempty"`
+	Servizio           string    `db:"servizio" json:"servizio,omitempty" yaml:"servizio,omitempty"`
+	Divisione          string    `db:"divisione" json:"divisione,omitempty" yaml:"divisione,omitempty"`
+	Settore            string    `db:"settore" json:"settore,omitempty" yaml:"settore,omitempty"`
+	Segmento           Segmento  `db:"segmento" json:"segmento" yaml:"segmento"`
+	DecorrenzaSegmento time.Time `db:"decorrenza_segmento" json:"decorrenza_segmento,omitempty" yaml:"decorrenza_segmento,omitempty"`
+	Livello            int       `db:"livello" json:"livello" yaml:"livello"`
+	DecorrenzaLivello  time.Time `db:"decorrenza_livello" json:"decorrenza_livello,omitempty" yaml:"decorrenza_livello,omitempty"`
+}
+
+const (
+	SchemaFatti = `
+CREATE TABLE IF NOT EXISTS fatti (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+	anno TEXT,
+	cid TEXT,
+	codice_individuale TEXT,
+	nome TEXT,
+	cognome TEXT,
+	dipartimento TEXT,
+	servizio TEXT,
+	divisione TEXT,
+	settore TEXT,
+	segmento TEXT,
+	decorrenza_segmento DATE,
+	livello INTEGER,
+	decorrenza_livello DATE
+);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_fatti_cid_anno ON fatti(cid, anno);
+`
+)

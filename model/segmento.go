@@ -1,4 +1,4 @@
-package load
+package model
 
 import (
 	"encoding/json"

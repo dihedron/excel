@@ -9,6 +9,8 @@
 *.dylib
 dist/
 *.db
+*.db-journal
+*.db-wal
 
 # Test binary, built with `go test -c`
 *.test

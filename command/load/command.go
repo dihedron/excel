@@ -1,8 +1,6 @@
 package load
 
 import (
-	"encoding/csv"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,10 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dihedron/excel/encoder"
+	"github.com/dihedron/excel/model"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xuri/excelize/v2"
-	"go.yaml.in/yaml/v3"
 )
 
 type Load struct {
@@ -66,44 +65,6 @@ func (m *Mapping) UnmarshalFlag(value string) error {
 	return nil
 }
 
-type Employee struct {
-	Year               string    `db:"year" json:"year,omitempty" yaml:"year,omitempty"`
-	CID                string    `db:"cid" json:"cid,omitempty" yaml:"cid,omitempty"`
-	CodiceIndividuale  string    `db:"codice_individuale" json:"codice_individuale,omitempty" yaml:"codice_individuale,omitempty"`
-	Nome               string    `db:"nome" json:"nome,omitempty" yaml:"nome,omitempty"`
-	Cognome            string    `db:"cognome" json:"cognome,omitempty" yaml:"cognome,omitempty"`
-	Dipartimento       string    `db:"dipartimento" json:"dipartimento,omitempty" yaml:"dipartimento,omitempty"`
-	Servizio           string    `db:"servizio" json:"servizio,omitempty" yaml:"servizio,omitempty"`
-	Divisione          string    `db:"divisione" json:"divisione,omitempty" yaml:"divisione,omitempty"`
-	Settore            string    `db:"categoria" json:"categoria,omitempty" yaml:"categoria,omitempty"`
-	Segmento           Segmento  `db:"segmento" json:"segmento" yaml:"segmento"`
-	DecorrenzaSegmento time.Time `db:"decorrenza_segmento" json:"decorrenza_segmento,omitempty" yaml:"decorrenza_segmento,omitempty"`
-	Livello            int       `db:"livello" json:"livello" yaml:"livello"`
-	DecorrenzaLivello  time.Time `db:"decorrenza_livello" json:"decorrenza_livello,omitempty" yaml:"decorrenza_livello,omitempty"`
-}
-
-const (
-	schema = `
-CREATE TABLE IF NOT EXISTS employees (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-	year TEXT,
-	cid TEXT,
-	codice_individuale TEXT,
-	nome TEXT,
-	cognome TEXT,
-	dipartimento TEXT,
-	servizio TEXT,
-	divisione TEXT,
-	settore TEXT,
-	segmento TEXT,
-	decorrenza_segmento DATE,
-	livello INTEGER,
-	decorrenza_livello DATE
-);
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_cid_year ON employees(cid, year);
-`
-)
-
 func (cmd *Load) Execute(args []string) error {
 
 	slog.Debug("opening CVS file", "file", cmd.File, "sheets", cmd.Sheets, "mappings", cmd.Columns, "filters", cmd.Filters)
@@ -125,7 +86,7 @@ func (cmd *Load) Execute(args []string) error {
 	defer db.Close()
 
 	// execute raw schema
-	db.MustExec(schema)
+	db.MustExec(model.SchemaFatti)
 
 	for _, sheet := range cmd.Sheets {
 
@@ -141,55 +102,55 @@ func (cmd *Load) Execute(args []string) error {
 			if i == 0 {
 				continue
 			}
-			employee := Employee{
-				Year: sheet.Label,
+			fatto := model.Fatto{
+				Anno: sheet.Label,
 			}
 			for _, col := range cmd.Columns {
 				switch {
 				case col.Name == "CID":
-					employee.CID = row[col.Offset]
+					fatto.CID = row[col.Offset]
 				case col.Name == "Codice Individuale":
-					employee.CodiceIndividuale = row[col.Offset]
+					fatto.CodiceIndividuale = row[col.Offset]
 				case col.Name == "Nome":
-					employee.Nome = row[col.Offset]
+					fatto.Nome = row[col.Offset]
 				case col.Name == "Cognome":
-					employee.Cognome = row[col.Offset]
+					fatto.Cognome = row[col.Offset]
 				case col.Name == "CognomeNome":
 					slog.Error("parsing CognomeNome", "row", i, "field", col.Name, "value", row[col.Offset])
 					cognome, nome, ok := strings.Cut(row[col.Offset], " ")
 					if ok {
-						employee.Cognome = cognome
-						employee.Nome = nome
+						fatto.Cognome = cognome
+						fatto.Nome = nome
 					}
 				case col.Name == "NomeCognome":
 					nome, cognome, ok := strings.Cut(row[col.Offset], " ")
 					if ok {
-						employee.Cognome = cognome
-						employee.Nome = nome
+						fatto.Cognome = cognome
+						fatto.Nome = nome
 					}
 				case col.Name == "Dipartimento":
-					employee.Dipartimento = row[col.Offset]
+					fatto.Dipartimento = row[col.Offset]
 				case col.Name == "Servizio":
-					employee.Servizio = row[col.Offset]
+					fatto.Servizio = row[col.Offset]
 				case col.Name == "Divisione":
-					employee.Divisione = row[col.Offset]
+					fatto.Divisione = row[col.Offset]
 				case col.Name == "Categoria":
-					employee.Settore = row[col.Offset]
+					fatto.Settore = row[col.Offset]
 				case col.Name == "Segmento":
-					var s Segmento
+					var s model.Segmento
 					err := s.UnmarshalText([]byte(row[col.Offset]))
 					if err != nil {
 						slog.Error("failed to parse segment", "row", i, "field", col.Name, "segment", row[col.Offset], "error", err)
 						continue outer
 					}
-					employee.Segmento = s
+					fatto.Segmento = s
 				case col.Name == "Decorrenza Segmento":
 					t, err := safeParseDate(row[col.Offset])
 					if err != nil {
 						slog.Error("failed to parse date", "row", i, "field", col.Name, "date", row[col.Offset], "error", err)
 						return err
 					}
-					employee.DecorrenzaSegmento = t
+					fatto.DecorrenzaSegmento = t
 				case col.Name == "Livello":
 
 					match := livello.FindStringSubmatch(row[col.Offset])
@@ -199,7 +160,7 @@ func (cmd *Load) Execute(args []string) error {
 							slog.Error("failed to parse integer", "row", i, "field", col.Name, "integer", row[col.Offset], "error", err)
 							return err
 						}
-						employee.Livello = lv
+						fatto.Livello = lv
 					}
 				case col.Name == "Decorrenza Livello":
 					t, err := safeParseDate(row[col.Offset])
@@ -207,7 +168,7 @@ func (cmd *Load) Execute(args []string) error {
 						slog.Error("failed to parse date", "row", i, "field", col.Name, "date", row[col.Offset], "error", err)
 						return err
 					}
-					employee.DecorrenzaLivello = t
+					fatto.DecorrenzaLivello = t
 				}
 			}
 
@@ -219,52 +180,52 @@ func (cmd *Load) Execute(args []string) error {
 				for _, filter := range cmd.Filters {
 					switch filter.Field {
 					case "CID":
-						if employee.CID == filter.Value {
+						if fatto.CID == filter.Value {
 							match = true
 							break filters
 						}
 					case "Codice Individuale":
-						if employee.CodiceIndividuale == filter.Value {
+						if fatto.CodiceIndividuale == filter.Value {
 							match = true
 							break filters
 						}
 					case "Nome":
-						if employee.Nome == filter.Value {
+						if fatto.Nome == filter.Value {
 							match = true
 							break filters
 						}
 					case "Cognome":
-						if employee.Cognome == filter.Value {
+						if fatto.Cognome == filter.Value {
 							match = true
 							break filters
 						}
 					case "Dipartimento":
-						if employee.Dipartimento == filter.Value {
+						if fatto.Dipartimento == filter.Value {
 							match = true
 							break filters
 						}
 					case "Servizio":
-						if employee.Servizio == filter.Value {
+						if fatto.Servizio == filter.Value {
 							match = true
 							break filters
 						}
 					case "Divisione":
-						if employee.Divisione == filter.Value {
+						if fatto.Divisione == filter.Value {
 							match = true
 							break filters
 						}
 					case "Categoria":
-						if employee.Settore == filter.Value {
+						if fatto.Settore == filter.Value {
 							match = true
 							break filters
 						}
 					case "Segmento":
-						if employee.Segmento.String() == filter.Value {
+						if fatto.Segmento.String() == filter.Value {
 							match = true
 							break filters
 						}
 					case "Decorrenza Segmento":
-						if employee.DecorrenzaLivello.Format("02/01/2006") == filter.Value {
+						if fatto.DecorrenzaLivello.Format("02/01/2006") == filter.Value {
 							match = true
 							break filters
 						}
@@ -274,12 +235,12 @@ func (cmd *Load) Execute(args []string) error {
 							slog.Error("failed to parse integer", "integer", filter.Value, "error", err)
 							return err
 						}
-						if employee.Livello == value {
+						if fatto.Livello == value {
 							match = true
 							break filters
 						}
 					case "Decorrenza Livello":
-						if employee.DecorrenzaLivello.Format("02/01/2006") == filter.Value {
+						if fatto.DecorrenzaLivello.Format("02/01/2006") == filter.Value {
 							match = true
 							break filters
 						}
@@ -287,41 +248,55 @@ func (cmd *Load) Execute(args []string) error {
 				}
 			}
 
-			var w *csv.Writer
+			e, err := encoder.New(cmd.Format, encoder.WithIndentation(), encoder.WithDataMapper(func(data any) ([]string, error) {
+				f := data.(model.Fatto)
+				return []string{f.Anno, f.CID, f.CodiceIndividuale, f.Nome, f.Cognome, f.Dipartimento, f.Servizio, f.Divisione, f.Settore, f.Segmento.String(), f.DecorrenzaSegmento.Format("02/01/2006"), strconv.Itoa(f.Livello), f.DecorrenzaLivello.Format("02/01/2006")}, nil
+			}))
+			if err != nil {
+				slog.Error("failed to create encoder", "format", cmd.Format, "error", err)
+				return err
+			}
+			defer e.Close()
 
 			if match {
-				switch cmd.Format {
-				case "text":
-					fmt.Printf("%+v\n", employee)
-				case "json":
-					b, err := json.MarshalIndent(employee, "", "  ")
-					if err != nil {
-						return err
-					}
-					fmt.Println(string(b))
-				case "yaml":
-					b, err := yaml.Marshal(employee)
-					if err != nil {
-						return err
-					}
-					fmt.Println(string(b))
-				case "csv":
-					if w == nil {
-						w = csv.NewWriter(os.Stdout)
-						defer w.Flush()
-					}
-					w.Write([]string{employee.Year, employee.CID, employee.CodiceIndividuale, employee.Nome, employee.Cognome, employee.Dipartimento, employee.Servizio, employee.Divisione, employee.Settore, employee.Segmento.String(), employee.DecorrenzaSegmento.Format("02/01/2006"), strconv.Itoa(employee.Livello), employee.DecorrenzaLivello.Format("02/01/2006")})
-					w.Flush()
+				if err := e.Encode(os.Stdout, fatto); err != nil {
+					slog.Error("failed to encode fatto", "error", err)
+					return err
 				}
+				// switch cmd.Format {
+				// case "text":
+				// 	fmt.Printf("%+v\n", fatto)
+				// case "json":
+				// 	b, err := json.MarshalIndent(fatto, "", "  ")
+				// 	if err != nil {
+				// 		return err
+				// 	}
+				// 	fmt.Println(string(b))
+				// case "yaml":
+				// 	b, err := yaml.Marshal(fatto)
+				// 	if err != nil {
+				// 		return err
+				// 	}
+				// 	fmt.Println(string(b))
+				// case "csv":
+				// 	if w == nil {
+				// 		w = csv.NewWriter(os.Stdout)
+				// 		defer w.Flush()
+				// 	}
+				// 	w.Write([]string{fatto.Anno, fatto.CID, fatto.CodiceIndividuale, fatto.Nome, fatto.Cognome, fatto.Dipartimento, fatto.Servizio, fatto.Divisione, fatto.Settore, fatto.Segmento.String(), fatto.DecorrenzaSegmento.Format("02/01/2006"), strconv.Itoa(fatto.Livello), fatto.DecorrenzaLivello.Format("02/01/2006")})
+				// 	w.Flush()
+				// }
 			}
 
-			_, err = db.NamedExec(`INSERT INTO employees (year, cid, codice_individuale, nome, cognome, dipartimento, servizio, divisione, settore, segmento, decorrenza_segmento, livello, decorrenza_livello) VALUES (:year, :cid, :codice_individuale, :nome, :cognome, :dipartimento, :servizio, :divisione, :settore, :segmento, :decorrenza_segmento, :livello, :decorrenza_livello)`, &employee)
-			if err != nil {
-				slog.Error("failed to insert employee", "employee", employee, "error", err)
+			if _, err := db.NamedExec(`INSERT INTO fatti (anno, cid, codice_individuale, nome, cognome, dipartimento, servizio, divisione, settore, segmento, decorrenza_segmento, livello, decorrenza_livello) VALUES (:anno, :cid, :codice_individuale, :nome, :cognome, :dipartimento, :servizio, :divisione, :settore, :segmento, :decorrenza_segmento, :livello, :decorrenza_livello)`, &fatto); err != nil {
+				slog.Error("failed to insert fatto", "fatto", fatto, "error", err)
 				return err
+				// } else {
+				// 	fmt.Printf(".")
 			}
 		}
 	}
+	fmt.Println("")
 
 	/*
 
