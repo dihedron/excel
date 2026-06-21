@@ -15,11 +15,8 @@ const (
 	Esperto
 )
 
-func (s *Segmento) String() string {
-	if s == nil {
-		return ""
-	}
-	return []string{"Direttore", "Consigliere", "Esperto"}[int(*s)]
+func (s Segmento) String() string {
+	return []string{"Direttore", "Consigliere", "Esperto"}[int(s)]
 }
 
 func (s Segmento) MarshalText() ([]byte, error) {
