@@ -1,10 +1,15 @@
 package model
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+)
 
 type Fatto struct {
 	ID                 int64     `db:"id" json:"-" yaml:"-"`
-	Anno               string    `db:"anno" json:"anno,omitempty" yaml:"anno,omitempty"`
+	Anno               int       `db:"anno" json:"anno,omitempty" yaml:"anno,omitempty"`
 	CID                string    `db:"cid" json:"cid,omitempty" yaml:"cid,omitempty"`
 	CodiceIndividuale  string    `db:"codice_individuale" json:"codice_individuale,omitempty" yaml:"codice_individuale,omitempty"`
 	Nome               string    `db:"nome" json:"nome,omitempty" yaml:"nome,omitempty"`
@@ -23,7 +28,7 @@ const (
 	SchemaFatti = `
 CREATE TABLE IF NOT EXISTS fatti (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-	anno TEXT,
+	anno INTEGER,
 	cid TEXT,
 	codice_individuale TEXT,
 	nome TEXT,
@@ -40,3 +45,11 @@ CREATE TABLE IF NOT EXISTS fatti (
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_fatti_cid_anno ON fatti(cid, anno);
 `
 )
+
+func MapFattoToSlice(data any) ([]string, error) {
+	f, ok := data.(Fatto)
+	if !ok {
+		return nil, errors.New("failed to cast to Fatto")
+	}
+	return []string{fmt.Sprintf("%d", f.Anno), f.CID, f.CodiceIndividuale, f.Nome, f.Cognome, f.Dipartimento, f.Servizio, f.Divisione, f.Settore, f.Segmento.String(), f.DecorrenzaSegmento.Format("02/01/2006"), strconv.Itoa(f.Livello), f.DecorrenzaLivello.Format("02/01/2006")}, nil
+}

@@ -20,7 +20,7 @@ import (
 type Load struct {
 	File    string    `short:"f" long:"file" description:"The Excel file to load." required:"true"`
 	Sheets  []Sheet   `short:"s" long:"sheet" description:"The sheet to load (format: <sheet>:<label>)." required:"true"`
-	Format  string    `short:"t" long:"format" description:"The format of the output." optional:"true" default:"text" choice:"text" choice:"json" choice:"yaml" choice:"csv"`
+	Format  string    `short:"t" long:"format" description:"The format of the output." optional:"true" default:"none" choice:"text" choice:"json" choice:"yaml" choice:"csv" choice:"none"`
 	Columns []Mapping `short:"m" long:"mapping" description:"The columns mappings (format: <field>:<offset>)." required:"true"`
 	Filters []Filter  `short:"x" long:"filter" description:"Only output records matching the filter (format: <field>:<value>)." optional:"true"`
 }
@@ -102,8 +102,13 @@ func (cmd *Load) Execute(args []string) error {
 			if i == 0 {
 				continue
 			}
+			anno, err := strconv.Atoi(sheet.Label)
+			if err != nil {
+				slog.Error("failed to parse integer", "integer", sheet.Label, "error", err)
+				return err
+			}
 			fatto := model.Fatto{
-				Anno: sheet.Label,
+				Anno: anno,
 			}
 			for _, col := range cmd.Columns {
 				switch {
@@ -134,7 +139,7 @@ func (cmd *Load) Execute(args []string) error {
 					fatto.Servizio = row[col.Offset]
 				case col.Name == "Divisione":
 					fatto.Divisione = row[col.Offset]
-				case col.Name == "Categoria":
+				case col.Name == "Settore":
 					fatto.Settore = row[col.Offset]
 				case col.Name == "Segmento":
 					var s model.Segmento
@@ -248,10 +253,7 @@ func (cmd *Load) Execute(args []string) error {
 				}
 			}
 
-			e, err := encoder.New(cmd.Format, encoder.WithIndentation(), encoder.WithDataMapper(func(data any) ([]string, error) {
-				f := data.(model.Fatto)
-				return []string{f.Anno, f.CID, f.CodiceIndividuale, f.Nome, f.Cognome, f.Dipartimento, f.Servizio, f.Divisione, f.Settore, f.Segmento.String(), f.DecorrenzaSegmento.Format("02/01/2006"), strconv.Itoa(f.Livello), f.DecorrenzaLivello.Format("02/01/2006")}, nil
-			}))
+			e, err := encoder.New(cmd.Format, encoder.WithIndentation(), encoder.WithDataMapper(model.MapFattoToSlice))
 			if err != nil {
 				slog.Error("failed to create encoder", "format", cmd.Format, "error", err)
 				return err

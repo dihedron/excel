@@ -28,6 +28,8 @@ func New(format string, opts ...Option) (Encoder, error) {
 		e = &TextEncoder{}
 	case "csv":
 		e = &CSVEncoder{}
+	case "none":
+		e = &NullEncoder{}
 	default:
 		return nil, errors.New("unsupported format")
 	}
@@ -136,5 +138,15 @@ func (e *CSVEncoder) Encode(w io.Writer, data any) error {
 
 func (e *CSVEncoder) Close() error {
 	e.writer.Flush()
+	return nil
+}
+
+type NullEncoder struct{}
+
+func (e *NullEncoder) Encode(w io.Writer, data any) error {
+	return nil
+}
+
+func (e *NullEncoder) Close() error {
 	return nil
 }
