@@ -121,7 +121,6 @@ func (cmd *Load) Execute(args []string) error {
 				case col.Name == "Cognome":
 					fatto.Cognome = row[col.Offset]
 				case col.Name == "CognomeNome":
-					slog.Error("parsing CognomeNome", "row", i, "field", col.Name, "value", row[col.Offset])
 					cognome, nome, ok := strings.Cut(row[col.Offset], " ")
 					if ok {
 						fatto.Cognome = cognome

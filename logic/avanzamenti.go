@@ -201,7 +201,7 @@ func Avanzamenti(db *sqlx.DB) error {
 			personeNelSettorePerAnno[fatto.Anno] = append(personeNelSettorePerAnno[fatto.Anno], cid)
 		}
 
-		// seleziona i passaggi di segmento: il segmento diminuisce rispetto all'anno precedente (quindi è un avanzamento)
+		// seleziona i passaggi di segmento: il segmento diminuisce rispetto all'anno precedente
 		if int(fatto.Segmento) < segmento && segmento < 3 {
 			passaggioDiSegmento := PassaggioDiSegmento{
 				CID:        cid,
@@ -232,7 +232,7 @@ func Avanzamenti(db *sqlx.DB) error {
 			}
 			aumenti[fatto.Anno] = append(aumenti[fatto.Anno], aumento)
 
-			// aggiorna il livello e l'annocon quello di questo avanzamento
+			// aggiorna il livello e l'anno con quello di questo avanzamento
 			livello = fatto.Livello
 			anno = fatto.Anno
 		}
@@ -264,20 +264,34 @@ func Avanzamenti(db *sqlx.DB) error {
 			fmt.Printf(" - Passaggio di Segmento a: %v\n", (model.Segmento(segmento)).String())
 			fmt.Printf("   - Persone nel Settore SDDC: %d\n", len(personeNelSettorePerAnno[anno]))
 
-			persone := []string{}
+			// calcola le persone eleggibili per la promozione in SDDC
+			eleggibiliInSDDC := []string{}
 			for _, cid := range eleggibiliNelSettorePerAnnoESegmento[anno][model.Segmento(segmento+1)] {
-				persone = append(persone, cidToName[cid])
+				eleggibiliInSDDC = append(eleggibiliInSDDC, cidToName[cid])
 			}
-			fmt.Printf("   - Eleggibili nel Settore SDDC: %d (%v)\n", len(eleggibiliNelSettorePerAnnoESegmento[anno][model.Segmento(segmento+1)]), strings.Join(persone, ", "))
+			// nel caso ci sia stato un passggio di segmento, il promosso non è più tra gli eleggibili
+			// quindi dobbiamo riaggiungerlo (in testa!) se lo vediamo ormai promosso
+			for _, passaggio := range passaggi {
+				if isInSet(passaggio.CID, personeNelSettorePerAnno[anno]) {
+					eleggibiliInSDDC = append([]string{cidToName[passaggio.CID]}, eleggibiliInSDDC...)
+				}
+			}
+			fmt.Printf("   - Eleggibili nel Settore SDDC: %d (%v)\n", len(eleggibiliInSDDC), strings.Join(eleggibiliInSDDC, ", "))
 			fmt.Printf("   - Eleggibili nel Dipartimento: %d\n", len(eleggibiliNelDipartimentoPerAnnoESegmento[anno][model.Segmento(segmento+1)]))
 			fmt.Printf("   - Numero di avanzamenti: %d\n", len(passaggi))
+			passaggiInSDDC := 0
+			passaggiNelDipartimento := 0
 			for _, passaggio := range passaggi {
 				if isInSet(passaggio.CID, personeNelSettorePerAnno[anno]) {
 					red(os.Stdout, "     - %s %s (%s)\n", passaggio.Cognome, passaggio.Nome, passaggio.CID)
+					passaggiInSDDC++
 				} else {
 					fmt.Printf("     - %s %s (%s)\n", passaggio.Cognome, passaggio.Nome, passaggio.CID)
+					passaggiNelDipartimento++
 				}
 			}
+			fmt.Printf("   - %% di promossi in SDDC: %.1f%% (%d/%d)\n", safePercent(passaggiInSDDC, len(eleggibiliInSDDC)), passaggiInSDDC, len(eleggibiliInSDDC))
+			fmt.Printf("   - %% di promossi nel Dipartimento: %.1f%% (%d/%d)\n", safePercent(passaggiNelDipartimento, len(eleggibiliNelDipartimentoPerAnnoESegmento[anno][model.Segmento(segmento+1)])), passaggiNelDipartimento, len(eleggibiliNelDipartimentoPerAnnoESegmento[anno][model.Segmento(segmento+1)]))
 		}
 
 		// aumenti di livello
@@ -285,26 +299,26 @@ func Avanzamenti(db *sqlx.DB) error {
 		fmt.Printf("----------------------------------------------------\n")
 		fmt.Printf(" - Aumenti di livello:\n")
 		numeroAumentiAlPrimoAnno := 0
-		numeroAumentiAlPrimoAnnoNonInSddc := 0
+		numeroAumentiAlPrimoAnnoInSddc := []string{}
 		numeroAumentiNonAlPrimoAnno := 0
-		numeroAumentiNonAlPrimoAnnoNonInSddc := 0
+		numeroAumentiNonAlPrimoAnnoInSddc := []string{}
 		for _, aumento := range aumentiPerAnno {
 			if aumento.AlPrimoAnno {
 				numeroAumentiAlPrimoAnno++
-				if !isInSet(aumento.CID, personeNelSettorePerAnno[anno]) {
-					numeroAumentiAlPrimoAnnoNonInSddc++
+				if isInSet(aumento.CID, personeNelSettorePerAnno[anno]) {
+					numeroAumentiAlPrimoAnnoInSddc = append(numeroAumentiAlPrimoAnnoInSddc, fmt.Sprintf("%s %s", aumento.Cognome, aumento.Nome))
 				}
 			} else {
 				numeroAumentiNonAlPrimoAnno++
-				if !isInSet(aumento.CID, personeNelSettorePerAnno[anno]) {
-					numeroAumentiNonAlPrimoAnnoNonInSddc++
+				if isInSet(aumento.CID, personeNelSettorePerAnno[anno]) {
+					numeroAumentiNonAlPrimoAnnoInSddc = append(numeroAumentiNonAlPrimoAnnoInSddc, fmt.Sprintf("%s %s", aumento.Cognome, aumento.Nome))
 				}
 			}
 		}
 		fmt.Printf("   - Numero di aumenti al primo anno: %d\n", numeroAumentiAlPrimoAnno)
-		red(os.Stdout, "       di cui %d nel settore SDDC\n", numeroAumentiAlPrimoAnno-numeroAumentiAlPrimoAnnoNonInSddc)
+		red(os.Stdout, "       di cui %d nel settore SDDC (%v)\n", len(numeroAumentiAlPrimoAnnoInSddc), strings.Join(numeroAumentiAlPrimoAnnoInSddc, ", "))
 		fmt.Printf("   - Numero di aumenti non al primo anno: %d\n", numeroAumentiNonAlPrimoAnno)
-		red(os.Stdout, "       di cui %d nel settore SDDC\n", numeroAumentiNonAlPrimoAnno-numeroAumentiNonAlPrimoAnnoNonInSddc)
+		red(os.Stdout, "       di cui %d nel settore SDDC (%v)\n", len(numeroAumentiNonAlPrimoAnnoInSddc), strings.Join(numeroAumentiNonAlPrimoAnnoInSddc, ", "))
 	}
 	fmt.Printf("----------------------------------------------------\n")
 	return nil
@@ -317,4 +331,11 @@ func isInSet(value string, set []string) bool {
 		}
 	}
 	return false
+}
+
+func safePercent(a, b int) float64 {
+	if b == 0 {
+		return 0
+	}
+	return float64(a) * 100 / float64(b)
 }
