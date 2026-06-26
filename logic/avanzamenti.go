@@ -16,8 +16,8 @@ type PassaggioDiSegmento struct {
 	Anno       int
 	Cognome    string
 	Nome       string
-	DaSegmento int
-	ASegmento  int
+	Precedente model.Segmento
+	Attuale    model.Segmento
 	Decorrenza time.Time
 	NelSettore bool
 }
@@ -31,10 +31,7 @@ type Aumento struct {
 	AlPrimoAnno bool
 }
 
-const (
-	patternSettoreSDDC  = "SOFTWARE DEFINED"
-	patternDivisioneRSA = "RETI, SICUREZZA"
-)
+var cidToName = NewCache[string, string]()
 
 func Avanzamenti(db *sqlx.DB) error {
 
@@ -244,7 +241,7 @@ func Avanzamenti(db *sqlx.DB) error {
 	totaleAumentiAlPrimoAnnoNelDipartimento := 0
 
 	cid := ""
-	segmento := 3
+	segmento := model.Segmento(3)
 	livello := 0
 	anno := 0
 	for _, fatto := range fatti {
@@ -265,10 +262,10 @@ func Avanzamenti(db *sqlx.DB) error {
 
 		// seleziona gli eleggibili per gli avanzamenti di segmento a consigliere (minimo livello 3)
 		if fatto.Segmento == 2 && fatto.Livello >= 3 {
-			if strings.Contains(fatto.Settore, patternSettoreSDDC) {
+			if isInSDDC(fatto) {
 				eleggibiliNelSettorePerAnnoESegmento[fatto.Anno][fatto.Segmento] = append(eleggibiliNelSettorePerAnnoESegmento[fatto.Anno][fatto.Segmento], fatto.CID)
 				totaleEleggibiliAlSegmentoInSDDC++
-			} else if strings.Contains(fatto.Divisione, patternDivisioneRSA) {
+			} else if isInRSA(fatto) {
 				eleggibiliInDivisioneRSAPerAnnoESegmento[fatto.Anno][fatto.Segmento] = append(eleggibiliInDivisioneRSAPerAnnoESegmento[fatto.Anno][fatto.Segmento], fatto.CID)
 				totaleEleggibiliAlSegmentoInRSA++
 			} else {
@@ -280,10 +277,10 @@ func Avanzamenti(db *sqlx.DB) error {
 
 		// seleziona gli eleggibili per gli avanzamenti di segmento a direttore (minimo livello 7)
 		if fatto.Segmento == 1 && fatto.Livello >= 7 {
-			if strings.Contains(fatto.Settore, patternSettoreSDDC) {
+			if isInSDDC(fatto) {
 				eleggibiliNelSettorePerAnnoESegmento[fatto.Anno][fatto.Segmento] = append(eleggibiliNelSettorePerAnnoESegmento[fatto.Anno][fatto.Segmento], cid)
 				totaleEleggibiliAlSegmentoInSDDC++
-			} else if strings.Contains(fatto.Divisione, patternDivisioneRSA) {
+			} else if isInRSA(fatto) {
 				eleggibiliInDivisioneRSAPerAnnoESegmento[fatto.Anno][fatto.Segmento] = append(eleggibiliInDivisioneRSAPerAnnoESegmento[fatto.Anno][fatto.Segmento], cid)
 				totaleEleggibiliAlSegmentoInRSA++
 			} else {
@@ -293,31 +290,31 @@ func Avanzamenti(db *sqlx.DB) error {
 		}
 
 		// estrai le persone che in quello specifico anno erano nel settore SDDC o in RSA
-		if strings.Contains(fatto.Settore, patternSettoreSDDC) {
+		if isInSDDC(fatto) {
 			personeNelSettorePerAnno[fatto.Anno] = append(personeNelSettorePerAnno[fatto.Anno], cid)
-		} else if strings.Contains(fatto.Divisione, patternDivisioneRSA) {
+		} else if isInRSA(fatto) {
 			personeInDivisioneRSAPerAnno[fatto.Anno] = append(personeInDivisioneRSAPerAnno[fatto.Anno], cid)
 		} else {
 			personeNelDipartimentoPerAnno[fatto.Anno] = append(personeNelDipartimentoPerAnno[fatto.Anno], cid)
 		}
 
 		// seleziona i passaggi di segmento: il segmento diminuisce rispetto all'anno precedente
-		if int(fatto.Segmento) < segmento && segmento < 3 {
+		if fatto.Segmento < segmento && segmento < 3 {
 			passaggioDiSegmento := PassaggioDiSegmento{
 				CID:        cid,
 				Anno:       fatto.Anno,
 				Cognome:    fatto.Cognome,
 				Nome:       fatto.Nome,
-				DaSegmento: segmento,
-				ASegmento:  int(fatto.Segmento),
+				Precedente: segmento,
+				Attuale:    fatto.Segmento,
 				Decorrenza: fatto.DecorrenzaSegmento,
 			}
 			passaggiDiSegmentoPerAnno[fatto.Anno][int(fatto.Segmento)] = append(passaggiDiSegmentoPerAnno[fatto.Anno][int(fatto.Segmento)], passaggioDiSegmento)
 
 			// conta i promossi al segmento
-			if strings.Contains(fatto.Settore, patternSettoreSDDC) {
+			if isInSDDC(fatto) {
 				totalePromossiAlSegmentoInSDDC++
-			} else if strings.Contains(fatto.Divisione, patternDivisioneRSA) {
+			} else if isInRSA(fatto) {
 				totalePromossiAlSegmentoInRSA++
 			} else {
 				totalePromossiAlSegmentoNelDipartimento++
@@ -325,7 +322,7 @@ func Avanzamenti(db *sqlx.DB) error {
 
 		}
 		// aggiorna il segmento con quello di questo avanzamento
-		segmento = int(fatto.Segmento)
+		segmento = fatto.Segmento
 
 		// calcola aumenti di livello
 		if livello == 0 {
@@ -344,9 +341,9 @@ func Avanzamenti(db *sqlx.DB) error {
 
 			// conta gli aumenti al primo anno
 			if aumento.AlPrimoAnno {
-				if strings.Contains(fatto.Settore, patternSettoreSDDC) {
+				if isInSDDC(fatto) {
 					totaleAumentiAlPrimoAnnoInSDDC++
-				} else if strings.Contains(fatto.Divisione, patternDivisioneRSA) {
+				} else if isInRSA(fatto) {
 					totaleAumentiAlPrimoAnnoInRSA++
 				} else {
 					totaleAumentiAlPrimoAnnoNelDipartimento++
