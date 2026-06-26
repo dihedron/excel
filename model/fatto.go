@@ -12,8 +12,7 @@ type Fatto struct {
 	Anno               int       `db:"anno" json:"anno,omitempty" yaml:"anno,omitempty"`
 	CID                string    `db:"cid" json:"cid,omitempty" yaml:"cid,omitempty"`
 	CodiceIndividuale  string    `db:"codice_individuale" json:"codice_individuale,omitempty" yaml:"codice_individuale,omitempty"`
-	Nome               string    `db:"nome" json:"nome,omitempty" yaml:"nome,omitempty"`
-	Cognome            string    `db:"cognome" json:"cognome,omitempty" yaml:"cognome,omitempty"`
+	Nominativo         string    `db:"nominativo" json:"nominativo,omitempty" yaml:"nominativo,omitempty"`
 	Dipartimento       string    `db:"dipartimento" json:"dipartimento,omitempty" yaml:"dipartimento,omitempty"`
 	Servizio           string    `db:"servizio" json:"servizio,omitempty" yaml:"servizio,omitempty"`
 	Divisione          string    `db:"divisione" json:"divisione,omitempty" yaml:"divisione,omitempty"`
@@ -31,8 +30,7 @@ CREATE TABLE IF NOT EXISTS fatti (
 	anno INTEGER,
 	cid TEXT,
 	codice_individuale TEXT,
-	nome TEXT,
-	cognome TEXT,
+	nominativo TEXT,
 	dipartimento TEXT,
 	servizio TEXT,
 	divisione TEXT,
@@ -51,5 +49,5 @@ func MapFattoToSlice(data any) ([]string, error) {
 	if !ok {
 		return nil, errors.New("failed to cast to Fatto")
 	}
-	return []string{fmt.Sprintf("%d", f.Anno), f.CID, f.CodiceIndividuale, f.Nome, f.Cognome, f.Dipartimento, f.Servizio, f.Divisione, f.Settore, f.Segmento.String(), f.DecorrenzaSegmento.Format("02/01/2006"), strconv.Itoa(f.Livello), f.DecorrenzaLivello.Format("02/01/2006")}, nil
+	return []string{fmt.Sprintf("%d", f.Anno), f.CID, f.CodiceIndividuale, f.Nominativo, f.Dipartimento, f.Servizio, f.Divisione, f.Settore, f.Segmento.String(), f.DecorrenzaSegmento.Format("02/01/2006"), strconv.Itoa(f.Livello), f.DecorrenzaLivello.Format("02/01/2006")}, nil
 }

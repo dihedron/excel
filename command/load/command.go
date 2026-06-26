@@ -116,24 +116,13 @@ func (cmd *Load) Execute(args []string) error {
 					fatto.CID = row[col.Offset]
 				case col.Name == "Codice Individuale":
 					fatto.CodiceIndividuale = row[col.Offset]
-				case col.Name == "Nome":
-					fatto.Nome = row[col.Offset]
-				case col.Name == "Cognome":
-					fatto.Cognome = row[col.Offset]
-				case col.Name == "CognomeNome":
-					cognome, nome, ok := strings.Cut(row[col.Offset], " ")
-					if ok {
-						fatto.Cognome = cognome
-						fatto.Nome = nome
-					}
-				case col.Name == "NomeCognome":
-					nome, cognome, ok := strings.Cut(row[col.Offset], " ")
-					if ok {
-						fatto.Cognome = cognome
-						fatto.Nome = nome
-					}
+				case col.Name == "Nominativo":
+					fatto.Nominativo = row[col.Offset]
 				case col.Name == "Dipartimento":
 					fatto.Dipartimento = row[col.Offset]
+					if fatto.Dipartimento != "DIPARTIMENTO INFORMATICA" {
+						continue
+					}
 				case col.Name == "Servizio":
 					fatto.Servizio = row[col.Offset]
 				case col.Name == "Divisione":
@@ -193,13 +182,8 @@ func (cmd *Load) Execute(args []string) error {
 							match = true
 							break filters
 						}
-					case "Nome":
-						if fatto.Nome == filter.Value {
-							match = true
-							break filters
-						}
-					case "Cognome":
-						if fatto.Cognome == filter.Value {
+					case "Nominativo":
+						if fatto.Nominativo == filter.Value {
 							match = true
 							break filters
 						}
@@ -289,7 +273,7 @@ func (cmd *Load) Execute(args []string) error {
 				// }
 			}
 
-			if _, err := db.NamedExec(`INSERT INTO fatti (anno, cid, codice_individuale, nome, cognome, dipartimento, servizio, divisione, settore, segmento, decorrenza_segmento, livello, decorrenza_livello) VALUES (:anno, :cid, :codice_individuale, :nome, :cognome, :dipartimento, :servizio, :divisione, :settore, :segmento, :decorrenza_segmento, :livello, :decorrenza_livello)`, &fatto); err != nil {
+			if _, err := db.NamedExec(`INSERT INTO fatti (anno, cid, codice_individuale, nominativo, dipartimento, servizio, divisione, settore, segmento, decorrenza_segmento, livello, decorrenza_livello) VALUES (:anno, :cid, :codice_individuale, :nominativo, :dipartimento, :servizio, :divisione, :settore, :segmento, :decorrenza_segmento, :livello, :decorrenza_livello)`, &fatto); err != nil {
 				slog.Error("failed to insert fatto", "fatto", fatto, "error", err)
 				return err
 				// } else {

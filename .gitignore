@@ -11,6 +11,7 @@ dist/
 *.db
 *.db-journal
 *.db-wal
+excel
 
 # Test binary, built with `go test -c`
 *.test

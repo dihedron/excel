@@ -14,8 +14,7 @@ import (
 type PassaggioDiSegmento struct {
 	CID        string
 	Anno       int
-	Cognome    string
-	Nome       string
+	Nominativo string
 	Precedente model.Segmento
 	Attuale    model.Segmento
 	Decorrenza time.Time
@@ -248,7 +247,7 @@ func Avanzamenti(db *sqlx.DB) error {
 
 		// popola la cache dei CID
 		if _, ok := cidToName[fatto.CID]; !ok {
-			cidToName[fatto.CID] = fmt.Sprintf("%s %s", fatto.Cognome, fatto.Nome)
+			cidToName[fatto.CID] = fatto.Nominativo
 		}
 
 		if cid == "" {
@@ -303,8 +302,7 @@ func Avanzamenti(db *sqlx.DB) error {
 			passaggioDiSegmento := PassaggioDiSegmento{
 				CID:        cid,
 				Anno:       fatto.Anno,
-				Cognome:    fatto.Cognome,
-				Nome:       fatto.Nome,
+				Nominativo: fatto.Nominativo,
 				Precedente: segmento,
 				Attuale:    fatto.Segmento,
 				Decorrenza: fatto.DecorrenzaSegmento,
@@ -332,8 +330,7 @@ func Avanzamenti(db *sqlx.DB) error {
 			aumento := Aumento{
 				CID:         cid,
 				Anno:        fatto.Anno,
-				Cognome:     fatto.Cognome,
-				Nome:        fatto.Nome,
+				Cognome:     fatto.Nominativo,
 				Livello:     fatto.Livello,
 				AlPrimoAnno: fatto.Anno == (anno + 1),
 			}
@@ -420,13 +417,13 @@ func Avanzamenti(db *sqlx.DB) error {
 			passaggiNelDipartimento := 0
 			for _, passaggio := range passaggi {
 				if isInSet(passaggio.CID, personeNelSettorePerAnno[anno]) {
-					fmt.Printf("     - %s %s (%s)\n", passaggio.Cognome, passaggio.Nome, passaggio.CID)
+					fmt.Printf("     - %s (%s)\n", passaggio.Nominativo, passaggio.CID)
 					passaggiInSDDC++
 				} else if isInSet(passaggio.CID, personeInDivisioneRSAPerAnno[anno]) {
-					fmt.Printf("     - %s %s (%s)\n", passaggio.Cognome, passaggio.Nome, passaggio.CID)
+					fmt.Printf("     - %s (%s)\n", passaggio.Nominativo, passaggio.CID)
 					passaggiInRSA++
 				} else {
-					fmt.Printf("     - %s %s (%s)\n", passaggio.Cognome, passaggio.Nome, passaggio.CID)
+					fmt.Printf("     - %s (%s)\n", passaggio.Nominativo, passaggio.CID)
 					passaggiNelDipartimento++
 				}
 			}

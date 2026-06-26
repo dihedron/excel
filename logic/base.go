@@ -1,8 +1,6 @@
 package logic
 
 import (
-	"fmt"
-
 	"github.com/dihedron/excel/model"
 )
 
@@ -15,7 +13,7 @@ func PersonalePerAnno(fatti []model.Fatto) (map[int][]model.Fatto, map[int][]mod
 	for _, fatto := range fatti {
 
 		// popola la cache dei CID
-		cidToName.Put(fatto.CID, fmt.Sprintf("%s %s", fatto.Cognome, fatto.Nome))
+		cidToName.Put(fatto.CID, fatto.Nominativo)
 
 		if isInSDDC(fatto) {
 			if _, ok := sddc[fatto.Anno]; !ok {
@@ -49,7 +47,7 @@ func ConsiglieriPerAnno(fatti []model.Fatto) (map[int][]model.Fatto, map[int][]m
 	for _, fatto := range fatti {
 
 		// popola la cache dei CID
-		cidToName.Put(fatto.CID, fmt.Sprintf("%s %s", fatto.Cognome, fatto.Nome))
+		cidToName.Put(fatto.CID, fatto.Nominativo)
 
 		if fatto.Segmento != model.Consigliere {
 			continue
@@ -87,7 +85,7 @@ func EspertiPerAnno(fatti []model.Fatto) (map[int][]model.Fatto, map[int][]model
 	for _, fatto := range fatti {
 
 		// popola la cache dei CID
-		cidToName.Put(fatto.CID, fmt.Sprintf("%s %s", fatto.Cognome, fatto.Nome))
+		cidToName.Put(fatto.CID, fatto.Nominativo)
 
 		if fatto.Segmento != model.Esperto {
 			continue

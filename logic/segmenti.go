@@ -1,8 +1,6 @@
 package logic
 
 import (
-	"fmt"
-
 	"github.com/dihedron/excel/model"
 )
 
@@ -15,7 +13,7 @@ func EleggibiliAConsiglierePerAnno(fatti []model.Fatto) (map[int][]model.Fatto, 
 	for _, fatto := range fatti {
 
 		// popola la cache dei CID
-		cidToName.Put(fatto.CID, fmt.Sprintf("%s %s", fatto.Cognome, fatto.Nome))
+		cidToName.Put(fatto.CID, fatto.Nominativo)
 
 		if fatto.Segmento == model.Esperto && fatto.Livello >= 3 {
 			if isInSDDC(fatto) {
@@ -51,7 +49,7 @@ func EleggibiliADirettorePerAnno(fatti []model.Fatto) (map[int][]model.Fatto, ma
 	for _, fatto := range fatti {
 
 		// popola la cache dei CID
-		cidToName.Put(fatto.CID, fmt.Sprintf("%s %s", fatto.Cognome, fatto.Nome))
+		cidToName.Put(fatto.CID, fatto.Nominativo)
 
 		if fatto.Segmento == model.Consigliere && fatto.Livello >= 7 {
 			if isInSDDC(fatto) {
@@ -90,7 +88,7 @@ func PromossiAConsiglierePerAnno(fatti []model.Fatto) (map[int][]PassaggioDiSegm
 	for _, fatto := range fatti {
 
 		// popola la cache dei CID
-		cidToName.Put(fatto.CID, fmt.Sprintf("%s %s", fatto.Cognome, fatto.Nome))
+		cidToName.Put(fatto.CID, fatto.Nominativo)
 
 		if cid == "" {
 			cid = fatto.CID
@@ -105,8 +103,7 @@ func PromossiAConsiglierePerAnno(fatti []model.Fatto) (map[int][]PassaggioDiSegm
 			passaggio := PassaggioDiSegmento{
 				CID:        cid,
 				Anno:       fatto.Anno,
-				Cognome:    fatto.Cognome,
-				Nome:       fatto.Nome,
+				Nominativo: fatto.Nominativo,
 				Precedente: segmento,
 				Attuale:    fatto.Segmento,
 				Decorrenza: fatto.DecorrenzaSegmento,
