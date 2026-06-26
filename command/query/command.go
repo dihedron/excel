@@ -7,12 +7,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dihedron/excel/command/base"
 	"github.com/dihedron/excel/encoder"
 	"github.com/jmoiron/sqlx"
 )
 
 type Query struct {
-	Format     string `short:"t" long:"format" description:"The format of the output." optional:"true" default:"text" choice:"text" choice:"json" choice:"yaml" choice:"csv" env:"EXCEL_FORMAT"`
+	base.Command
 	Positional struct {
 		Statement string `positional-arg-name:"statement" description:"The SQL query to execute." required:"yes"`
 	} `positional-args:"yes" required:"yes"`
@@ -22,7 +23,7 @@ func (cmd *Query) Execute(args []string) error {
 	slog.Debug("querying the database")
 
 	// Connect using sqlx (wraps standard database/sql)
-	db, err := sqlx.Connect("sqlite3", "excel.db")
+	db, err := sqlx.Connect("sqlite3", cmd.DB)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		return err
