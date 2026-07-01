@@ -1,9 +1,11 @@
 package load
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,11 +19,11 @@ import (
 
 type Load struct {
 	base.Command
-	File       string    `short:"f" long:"file" description:"The Excel file to load." required:"true"`
-	Sheet      string    `short:"s" long:"sheet" description:"The sheet to load." required:"true"`
-	Columns    []Mapping `short:"m" long:"mapping" description:"The columns mappings (format: <field>:<offset|value>[:converter])." required:"true"`
-	Filters    []Filter  `short:"x" long:"filter" description:"Only output records matching the filter (format: <field>:<value>)." optional:"true"`
-	Headers    int       `short:"h" long:"header" description:"The number of headers to skip." optional:"true" default:"0"`
+	File    string    `short:"f" long:"file" description:"The Excel file to load." required:"true"`
+	Sheet   string    `short:"s" long:"sheet" description:"The sheet to load." required:"true"`
+	Columns []Mapping `short:"m" long:"mapping" description:"The columns mappings (format: <field>:<offset|value>[:converter])." required:"true"`
+	//Filters    []Filter  `short:"x" long:"filter" description:"Only output records matching the filter (format: <field>:<value>)." optional:"true"`
+	Headers    int `short:"h" long:"headers" description:"The number of headers to skip." optional:"true" default:"0"`
 	Positional struct {
 		Statement string `positional-arg-name:"statement" description:"The SQL statement to execute." required:"yes"`
 	} `positional-args:"yes" required:"yes"`
@@ -81,7 +83,8 @@ func (s *Sheet) UnmarshalFlag(value string) error {
 
 func (cmd *Load) Execute(args []string) error {
 
-	slog.Debug("opening CVS file", "file", cmd.File, "sheet", cmd.Sheet, "mappings", cmd.Columns, "filters", cmd.Filters)
+	//slog.Debug("opening CVS file", "file", cmd.File, "sheet", cmd.Sheet, "mappings", cmd.Columns, "filters", cmd.Filters)
+	slog.Debug("opening CVS file", "file", cmd.File, "sheet", cmd.Sheet, "mappings", cmd.Columns)
 
 	// open the Excel file
 	f, err := excelize.OpenFile(cmd.File)
@@ -99,10 +102,21 @@ func (cmd *Load) Execute(args []string) error {
 	}
 	defer db.Close()
 
-	// execute raw schema
-	//db.MustExec(model.SchemaFatti)
+	ctx := context.Background()
 
-	//for _, sheet := range cmd.Sheets {
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		slog.Error("failed to open transaction", "error", err)
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareNamedContext(ctx, cmd.Positional.Statement)
+	if err != nil {
+		slog.Error("failed to prepare statement", "statement", cmd.Positional.Statement, "error", err)
+		return err
+	}
+	defer stmt.Close()
 
 	rows, err := f.GetRows(cmd.Sheet)
 	if err != nil {
@@ -110,109 +124,59 @@ func (cmd *Load) Execute(args []string) error {
 		return err
 	}
 
+	count := 0
+
+rows:
 	for i, row := range rows {
 		if i < cmd.Headers {
+			slog.Debug("skipping line", "count", i, "headers", cmd.Headers)
 			continue
 		}
+		slog.Debug("processing row...", "count", i)
 		entity := map[string]any{}
 		for _, column := range cmd.Columns {
-			if column.Offset == -1 {
+			if column.Offset == NoOffset {
+				slog.Debug("mapping does not represent a column offset, using direct value", "name", column.Name, "value", column.Value)
 				if column.Converter != nil {
+					slog.Debug("need to convert value first", "name", column.Name, "value", column.Value)
 					value, err := column.Converter(column.Value)
 					if err != nil {
-						slog.Error("failed to convert value", "value", column.Value, "error", err)
-						return err
+						slog.Error("failed to convert value", "name", column.Name, "value", column.Value, "error", err)
+						fmt.Fprintf(os.Stderr, "%s!%05d: failed to convert value for column %s (value: %q, error: %v)\n", cmd.Sheet, i, column.Name, column.Value, err)
+						continue rows
 					}
+					slog.Debug("value successfully converted", "name", column.Name, "value", value)
 					entity[column.Name] = value
 				} else {
+					slog.Debug("using value as provided", "name", column.Name, "value", column.Value)
 					entity[column.Name] = column.Value
 				}
 			} else {
+				// this is an offset into the eXcel file
+				slog.Debug("mapping represents a column offset into the eXcel file", "name", column.Name, "offset", column.Offset)
 				if column.Converter != nil {
+					slog.Debug("need to convert value first", "name", column.Name, "value", column.Value)
 					value, err := column.Converter(row[column.Offset])
 					if err != nil {
-						slog.Error("failed to convert value", "value", row[column.Offset], "error", err)
-						return err
+						slog.Error("failed to convert value", "name", column.Name, "value", row[column.Offset], "error", err)
+						fmt.Fprintf(os.Stderr, "%s!%05d: failed to convert value for column %s (value: %q, error: %v)\n", cmd.Sheet, i, column.Name, row[column.Offset], err)
+						continue rows
 					}
+					slog.Debug("value successfully converted", "name", column.Name, "value", value)
 					entity[column.Name] = value
 				} else {
+					slog.Debug("using value as provided", "name", column.Name, "value", column.Value)
 					entity[column.Name] = row[column.Offset]
 				}
 			}
-			if _, err := db.NamedExec(cmd.Positional.Statement, entity); err != nil {
-				slog.Error("failed to insert entity", "entity", entity, "error", err)
-				return err
-			}
 		}
-
-		// 	livello := regexp.MustCompile(`(\d+)`)
-		// outer:
-		// 	for i, row := range rows {
-		// 		if i == 0 {
-		// 			continue
-		// 		}
-		// 		anno, err := strconv.Atoi(sheet.Label)
-		// 		if err != nil {
-		// 			slog.Error("failed to parse integer", "integer", sheet.Label, "error", err)
-		// 			return err
-		// 		}
-		// 		fatto := model.Fatto{
-		// 			Anno: anno,
-		// 		}
-		// 		for _, col := range cmd.Columns {
-		// 			switch {
-		// 			case col.Name == "CID":
-		// 				fatto.CID = row[col.Offset]
-		// 			case col.Name == "Codice Individuale":
-		// 				fatto.CodiceIndividuale = row[col.Offset]
-		// 			case col.Name == "Nominativo":
-		// 				fatto.Nominativo = row[col.Offset]
-		// 			case col.Name == "Dipartimento":
-		// 				fatto.Dipartimento = row[col.Offset]
-		// 				if fatto.Dipartimento != "DIPARTIMENTO INFORMATICA" {
-		// 					continue
-		// 				}
-		// 			case col.Name == "Servizio":
-		// 				fatto.Servizio = row[col.Offset]
-		// 			case col.Name == "Divisione":
-		// 				fatto.Divisione = row[col.Offset]
-		// 			case col.Name == "Settore":
-		// 				fatto.Settore = row[col.Offset]
-		// 			case col.Name == "Segmento":
-		// 				var s model.Segmento
-		// 				err := s.UnmarshalText([]byte(row[col.Offset]))
-		// 				if err != nil {
-		// 					slog.Error("failed to parse segment", "row", i, "field", col.Name, "segment", row[col.Offset], "error", err)
-		// 					continue outer
-		// 				}
-		// 				fatto.Segmento = s
-		// 			case col.Name == "Decorrenza Segmento":
-		// 				t, err := safeParseDate(row[col.Offset])
-		// 				if err != nil {
-		// 					slog.Error("failed to parse date", "row", i, "field", col.Name, "date", row[col.Offset], "error", err)
-		// 					return err
-		// 				}
-		// 				fatto.DecorrenzaSegmento = t
-		// 			case col.Name == "Livello":
-
-		// 				match := livello.FindStringSubmatch(row[col.Offset])
-		// 				if len(match) > 1 {
-		// 					lv, err := strconv.Atoi(match[1])
-		// 					if err != nil {
-		// 						slog.Error("failed to parse integer", "row", i, "field", col.Name, "integer", row[col.Offset], "error", err)
-		// 						return err
-		// 					}
-		// 					fatto.Livello = lv
-		// 				}
-		// 			case col.Name == "Decorrenza Livello":
-		// 				t, err := safeParseDate(row[col.Offset])
-		// 				if err != nil {
-		// 					slog.Error("failed to parse date", "row", i, "field", col.Name, "date", row[col.Offset], "error", err)
-		// 					return err
-		// 				}
-		// 				fatto.DecorrenzaLivello = t
-		// 			}
-		// 		}
+		slog.Debug("inserting entity into database", "statement", cmd.Positional.Statement, "entity", entity)
+		if _, err := stmt.ExecContext(ctx, entity); err != nil {
+			slog.Error("failed to insert entity", "entity", entity, "error", err)
+			fmt.Fprintf(os.Stderr, "%s!%05d: failed to insert row %+v into database: %v\n", cmd.Sheet, i, entity, err)
+			continue rows
+		}
+		count++
 
 		// 		match := false
 		// 		if len(cmd.Filters) == 0 {
@@ -327,7 +291,7 @@ func (cmd *Load) Execute(args []string) error {
 		// 	return err
 		// }
 	}
-	fmt.Println("")
+	fmt.Fprintf(os.Stdout, "%d lines inserted out of %d\n", count, len(rows)-cmd.Headers)
 
 	/*
 
@@ -398,22 +362,29 @@ func safeParseDate(value string) (time.Time, error) {
 	return time.Time{}, result
 }
 
+const NoOffset = -1
+
 func getOffset(value string) (int, error) {
 	match := regexp.MustCompile(`\{(\d+)\}`).FindStringSubmatch(value)
 	if len(match) > 1 {
-		result, err := strconv.Atoi(match[1])
+		offset, err := strconv.Atoi(match[1])
 		if err == nil {
-			return result, nil
+			slog.Debug("mapping represents column offset", "value", value, "offset", offset)
+			return offset, nil
 		}
-		return -1, err
+		slog.Error("invalid format in mapping", "value", value, "error", err)
+		return NoOffset, err
 	}
-	return -1, nil
+	slog.Debug("mapping does not represnet a column offset")
+	return NoOffset, nil
 }
 
 func getFormat(value string) string {
 	match := regexp.MustCompile(`time\(([0-9\/\.\-:]+)\)`).FindStringSubmatch(value)
 	if len(match) > 1 {
+		slog.Debug("valid date forma found", "value", value, "format", match[1])
 		return match[1]
 	}
+	slog.Debug("returning default date format", "value", value, "format", "02/01/2006")
 	return "02/01/2006"
 }
