@@ -318,7 +318,7 @@ rows:
 			red(fmt.Sprintf("%d", discarded)),
 			magenta(fmt.Sprintf("%d", len(rows)-cmd.Headers)))
 	} else {
-		fmt.Fprintf(os.Stdout, "OK: %s lines inserted, %s discarded out of %d\n", inserted, discarded, len(rows)-cmd.Headers)
+		fmt.Fprintf(os.Stdout, "OK: %d lines inserted, %d discarded out of %d\n", inserted, discarded, len(rows)-cmd.Headers)
 	}
 
 	/*

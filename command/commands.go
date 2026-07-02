@@ -10,7 +10,7 @@ import (
 // Commands is the set of root command groups.
 type Commands struct {
 	// Load is the command that loads an Excel file into the database.
-	Load load.Load `command:"load" alias:"l" description:"Load an Excel file into the database."`
+	Import load.Load `command:"import" alias:"i" description:"Import data from an Excel file into the database."`
 	// Query is the command that queries the database.
 	Query query.Query `command:"query" alias:"q" description:"Query the database."`
 	// Reports is the command that generates reports.
