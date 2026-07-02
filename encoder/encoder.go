@@ -82,7 +82,7 @@ func (e *YAMLEncoder) Encode(w io.Writer, data any) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "%s\n", string(result))
+	fmt.Fprintf(w, "---\n%s", string(result))
 	return nil
 }
 

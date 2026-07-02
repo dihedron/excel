@@ -100,6 +100,21 @@ func (cmd *Query) Execute(args []string) error {
 			return err
 		}
 
+		if isatty.IsTerminal(os.Stdout.Fd()) {
+			green := color.New(color.FgGreen).SprintfFunc()
+			if len(entities) == 1 {
+				fmt.Fprintf(os.Stdout, "OK: %s entity retrieved\n", green(fmt.Sprintf("%d", len(entities))))
+			} else {
+				fmt.Fprintf(os.Stdout, "OK: %s entities retrieved\n", green(fmt.Sprintf("%d", len(entities))))
+			}
+		} else {
+			if len(entities) == 1 {
+				fmt.Fprintf(os.Stdout, "OK: %d entity retrieved\n", len(entities))
+			} else {
+				fmt.Fprintf(os.Stdout, "OK: %d entities retrieved\n", len(entities))
+			}
+		}
+
 		// entities ready
 		e, err := encoder.New(cmd.Format, encoder.WithIndentation() /* TODO: implement mapper */)
 		if err != nil {
@@ -111,7 +126,7 @@ func (cmd *Query) Execute(args []string) error {
 		for _, entity := range entities {
 			slog.Debug("encoding entity to output", "entity", entity, "format", cmd.Format)
 			if err := e.Encode(os.Stdout, entity); err != nil {
-				slog.Error("failed to encode fatto", "error", err)
+				slog.Error("failed to encode entity", "error", err)
 				return err
 			}
 		}
