@@ -9,7 +9,9 @@ import (
 
 	"github.com/dihedron/excel/command/base"
 	"github.com/dihedron/excel/encoder"
+	"github.com/fatih/color"
 	"github.com/jmoiron/sqlx"
+	"github.com/mattn/go-isatty"
 )
 
 type Query struct {
@@ -116,36 +118,13 @@ func (cmd *Query) Execute(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("statement OK, %d rows affected\n", affected)
-
-		rows, err := db.Query("SELECT count(*) FROM fatti where dipartimento = 'DIPARTIMENTO INDFORMATICA'")
-		if err != nil {
-			return err
+		if isatty.IsTerminal(os.Stdout.Fd()) {
+			green := color.New(color.FgGreen).SprintfFunc()
+			fmt.Printf("OK: %s rows affected\n", green(fmt.Sprintf("%d", affected)))
+		} else {
+			fmt.Printf("OK: %d rows affected\n", affected)
 		}
-		defer rows.Close()
 	}
-
-	// var facts []model.Fatto
-	//  err = db.Select(&facts, cmd.Positional.Query)
-	// if err != nil {
-	// 	slog.Error("failed to query database", "error", err)
-	// 	return err
-	// }
-
-	// e, err := encoder.New(cmd.Format, encoder.WithIndentation(), encoder.WithDataMapper(model.MapFattoToSlice))
-	// if err != nil {
-	// 	slog.Error("failed to create encoder", "format", cmd.Format, "error", err)
-	// 	return err
-	// }
-	// defer e.Close()
-
-	// for _, fact := range facts {
-	// 	if err := e.Encode(os.Stdout, fact); err != nil {
-	// 		slog.Error("failed to encode fatto", "error", err)
-	// 		return err
-	// 	}
-	// }
-
 	return nil
 }
 

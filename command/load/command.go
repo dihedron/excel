@@ -12,16 +12,18 @@ import (
 	"time"
 
 	"github.com/dihedron/excel/command/base"
+	"github.com/fatih/color"
 	"github.com/jmoiron/sqlx"
+	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xuri/excelize/v2"
 )
 
 type Load struct {
 	base.Command
-	File    string    `short:"f" long:"file" description:"The Excel file to load." required:"true"`
-	Sheet   string    `short:"s" long:"sheet" description:"The sheet to load." required:"true"`
-	Columns []Mapping `short:"m" long:"mapping" description:"The columns mappings (format: <field>:<offset|value>[:converter])." required:"true"`
+	File     string    `short:"f" long:"file" description:"The Excel file to load." required:"true"`
+	Sheet    string    `short:"s" long:"sheet" description:"The sheet to load." required:"true"`
+	Mappings []Mapping `short:"m" long:"mapping" description:"The columns mappings (format: <field>:<{offset}|value>[:converter])." required:"true"`
 	//Filters    []Filter  `short:"x" long:"filter" description:"Only output records matching the filter (format: <field>:<value>)." optional:"true"`
 	Headers    int `short:"h" long:"headers" description:"The number of headers to skip." optional:"true" default:"0"`
 	Positional struct {
@@ -84,7 +86,7 @@ func (s *Sheet) UnmarshalFlag(value string) error {
 func (cmd *Load) Execute(args []string) error {
 
 	//slog.Debug("opening CVS file", "file", cmd.File, "sheet", cmd.Sheet, "mappings", cmd.Columns, "filters", cmd.Filters)
-	slog.Debug("opening CVS file", "file", cmd.File, "sheet", cmd.Sheet, "mappings", cmd.Columns)
+	slog.Debug("opening CVS file", "file", cmd.File, "sheet", cmd.Sheet, "mappings", cmd.Mappings)
 
 	// open the Excel file
 	f, err := excelize.OpenFile(cmd.File)
@@ -124,7 +126,8 @@ func (cmd *Load) Execute(args []string) error {
 		return err
 	}
 
-	count := 0
+	inserted := 0
+	discarded := 0
 
 rows:
 	for i, row := range rows {
@@ -134,39 +137,41 @@ rows:
 		}
 		slog.Debug("processing row...", "count", i)
 		entity := map[string]any{}
-		for _, column := range cmd.Columns {
-			if column.Offset == NoOffset {
-				slog.Debug("mapping does not represent a column offset, using direct value", "name", column.Name, "value", column.Value)
-				if column.Converter != nil {
-					slog.Debug("need to convert value first", "name", column.Name, "value", column.Value)
-					value, err := column.Converter(column.Value)
+		for _, mapping := range cmd.Mappings {
+			if mapping.Offset == NoOffset {
+				slog.Debug("mapping does not represent a mapping offset, using direct value", "name", mapping.Name, "value", mapping.Value)
+				if mapping.Converter != nil {
+					slog.Debug("need to convert value first", "name", mapping.Name, "value", mapping.Value)
+					value, err := mapping.Converter(mapping.Value)
 					if err != nil {
-						slog.Error("failed to convert value", "name", column.Name, "value", column.Value, "error", err)
-						fmt.Fprintf(os.Stderr, "%s!%05d: failed to convert value for column %s (value: %q, error: %v)\n", cmd.Sheet, i, column.Name, column.Value, err)
+						slog.Error("failed to convert value", "name", mapping.Name, "value", mapping.Value, "error", err)
+						fmt.Fprintf(os.Stderr, "%s!%05d: failed to convert value for column %s (value: %q, error: %v)\n", cmd.Sheet, i, mapping.Name, mapping.Value, err)
+						discarded++
 						continue rows
 					}
-					slog.Debug("value successfully converted", "name", column.Name, "value", value)
-					entity[column.Name] = value
+					slog.Debug("value successfully converted", "name", mapping.Name, "value", value)
+					entity[mapping.Name] = value
 				} else {
-					slog.Debug("using value as provided", "name", column.Name, "value", column.Value)
-					entity[column.Name] = column.Value
+					slog.Debug("using value as provided", "name", mapping.Name, "value", mapping.Value)
+					entity[mapping.Name] = mapping.Value
 				}
 			} else {
 				// this is an offset into the eXcel file
-				slog.Debug("mapping represents a column offset into the eXcel file", "name", column.Name, "offset", column.Offset)
-				if column.Converter != nil {
-					slog.Debug("need to convert value first", "name", column.Name, "value", column.Value)
-					value, err := column.Converter(row[column.Offset])
+				slog.Debug("mapping represents a column offset into the eXcel file", "name", mapping.Name, "offset", mapping.Offset)
+				if mapping.Converter != nil {
+					slog.Debug("need to convert value first", "name", mapping.Name, "value", mapping.Value)
+					value, err := mapping.Converter(row[mapping.Offset])
 					if err != nil {
-						slog.Error("failed to convert value", "name", column.Name, "value", row[column.Offset], "error", err)
-						fmt.Fprintf(os.Stderr, "%s!%05d: failed to convert value for column %s (value: %q, error: %v)\n", cmd.Sheet, i, column.Name, row[column.Offset], err)
+						slog.Error("failed to convert value", "name", mapping.Name, "value", row[mapping.Offset], "error", err)
+						fmt.Fprintf(os.Stderr, "%s!%05d: failed to convert value for column %s (value: %q, error: %v)\n", cmd.Sheet, i, mapping.Name, row[mapping.Offset], err)
+						discarded++
 						continue rows
 					}
-					slog.Debug("value successfully converted", "name", column.Name, "value", value)
-					entity[column.Name] = value
+					slog.Debug("value successfully converted", "name", mapping.Name, "value", value)
+					entity[mapping.Name] = value
 				} else {
-					slog.Debug("using value as provided", "name", column.Name, "value", column.Value)
-					entity[column.Name] = row[column.Offset]
+					slog.Debug("using value as provided", "name", mapping.Name, "value", mapping.Value)
+					entity[mapping.Name] = row[mapping.Offset]
 				}
 			}
 		}
@@ -174,9 +179,10 @@ rows:
 		if _, err := stmt.ExecContext(ctx, entity); err != nil {
 			slog.Error("failed to insert entity", "entity", entity, "error", err)
 			fmt.Fprintf(os.Stderr, "%s!%05d: failed to insert row %+v into database: %v\n", cmd.Sheet, i, entity, err)
+			discarded++
 			continue rows
 		}
-		count++
+		inserted++
 
 		// 		match := false
 		// 		if len(cmd.Filters) == 0 {
@@ -291,7 +297,29 @@ rows:
 		// 	return err
 		// }
 	}
-	fmt.Fprintf(os.Stdout, "%d lines inserted out of %d\n", count, len(rows)-cmd.Headers)
+
+	if err := tx.Commit(); err != nil {
+		slog.Error("failed committing data to database", "error", err)
+		if isatty.IsTerminal(os.Stdout.Fd()) {
+			blue := color.New(color.FgBlue).SprintfFunc()
+			fmt.Printf("KO: error committing data (%s)\n", blue(fmt.Sprintf("%v", err)))
+		} else {
+			fmt.Printf("KO: error committing data (%v)\n", err)
+		}
+		return err
+	}
+
+	if isatty.IsTerminal(os.Stdout.Fd()) {
+		green := color.New(color.FgGreen).SprintfFunc()
+		red := color.New(color.FgRed).SprintfFunc()
+		magenta := color.New(color.FgMagenta).SprintfFunc()
+		fmt.Fprintf(os.Stdout, "OK: %s lines inserted, %s discarded out of %s\n",
+			green(fmt.Sprintf("%d", inserted)),
+			red(fmt.Sprintf("%d", discarded)),
+			magenta(fmt.Sprintf("%d", len(rows)-cmd.Headers)))
+	} else {
+		fmt.Fprintf(os.Stdout, "OK: %s lines inserted, %s discarded out of %d\n", inserted, discarded, len(rows)-cmd.Headers)
+	}
 
 	/*
 
